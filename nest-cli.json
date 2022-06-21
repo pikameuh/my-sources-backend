@@ -1,0 +1,11 @@
+{
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "src",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "plugins": ["@nestjs/swagger/plugin"],
+    "assets": [
+      { "include": "common/mail/**/*.hbs","watchAssets": true }
+    ]
+  }
+}

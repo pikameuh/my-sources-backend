@@ -1,0 +1,15 @@
+npm install --save @nestjs/passport passport passport-local
+npm install --save-dev @types/passport-local
+
+
+
+nest g module common/auth
+nest g service common/auth
+
+nest g module common/users
+nest g service common/users
+
+npm install --save @nestjs/jwt passport-jwt
+npm install --save-dev @types/passport-jwt
+
+npm install --save @types/bcrypt bcrypt

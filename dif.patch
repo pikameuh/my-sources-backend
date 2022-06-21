@@ -1,0 +1,747 @@
+diff --git a/src/app.module.ts b/src/app.module.ts
+index a0d2ad6..70005b7 100644
+--- a/src/app.module.ts
++++ b/src/app.module.ts
+@@ -16,17 +16,10 @@ import { UsersModule } from './common/users/users.module';
+ import { SourcesModule } from './sources/sources.module';
+ import { UsersController } from './common/users/users.controller';
+ import { RolesController } from './common/users/roles.controller';
+-import { JwtModule } from '@nestjs/jwt';
+ 
+ @Module({
+   imports: [
+-    // CoffeesModule,
+-    // JwtModule.registerAsync({
+-    //   useFactory: async () => ({
+-    //     secret: process.env.SECRET,
+-    //     signOptions: { expiresIn: process.env.JWT_TOKEN_EXPIRATION_TIME },
+-    //   })
+-    // }),    
++    CoffeesModule,    
+     CommonModule,
+     AuthModule,
+     UsersModule,
+diff --git a/src/common/auth/JwtPayload.ts b/src/common/auth/JwtPayload.ts
+deleted file mode 100644
+index 63bc4f5..0000000
+--- a/src/common/auth/JwtPayload.ts
++++ /dev/null
+@@ -1,9 +0,0 @@
+-export interface JwtPayload {
+-    id: number, 
+-    pseudo: string, 
+-    email: string, 
+-    d_creation: Date, 
+-    role: { 
+-        name: string, 
+-        description: string
+-    }};
+\ No newline at end of file
+diff --git a/src/common/auth/auth.module.ts b/src/common/auth/auth.module.ts
+index b38615f..e5c38a8 100644
+--- a/src/common/auth/auth.module.ts
++++ b/src/common/auth/auth.module.ts
+@@ -1,4 +1,4 @@
+-import { forwardRef, Module } from '@nestjs/common';
++import { Module } from '@nestjs/common';
+ import { JwtModule } from '@nestjs/jwt';
+ import { PassportModule } from '@nestjs/passport';
+ import { UsersModule } from '../users/users.module';
+@@ -9,7 +9,7 @@ import { RolesGuard } from './strategies/roles.guards';
+ 
+ @Module({
+   imports: [
+-    forwardRef(() =>UsersModule), 
++    UsersModule, 
+     PassportModule, 
+     JwtModule.registerAsync({
+       useFactory: async () => ({
+diff --git a/src/common/auth/auth.service.ts b/src/common/auth/auth.service.ts
+index 267173a..ccf1959 100644
+--- a/src/common/auth/auth.service.ts
++++ b/src/common/auth/auth.service.ts
+@@ -1,14 +1,10 @@
+-import { forwardRef, Inject, Injectable } from '@nestjs/common';
++import { Injectable } from '@nestjs/common';
+ import { UsersService } from '../users/users.service';
+ import { JwtService } from '@nestjs/jwt';
+-import { UserDto } from '../users/dto/user.dto';
+-import { JwtPayload } from './JwtPayload';
+-import { Role } from '../users/entities/role.entity';
+ 
+ @Injectable()
+ export class AuthService {
+     constructor(
+-        // @Inject(forwardRef(() => UsersService))//<--- here
+         private readonly usersService: UsersService,
+         private readonly jwtService: JwtService,
+     ) { }
+@@ -29,50 +25,9 @@ export class AuthService {
+ 
+     async login(user: any) {
+         console.log(`AuthService.login(${JSON.stringify(user)})`);
+-        // const payload = { sub: user.userId, pseudo: user.pseudo, email: user.email, role: user.role.name };
+-        // return {
+-        //     access_token: this.jwtService.sign(payload),
+-        // };
+-
+-        // generate and sign token   
+-        user.id;
+-        const token = this._createToken(user);
+-
++        const payload = { username: user.username, sub: user.userId, role: user.role.name, user: user.username };
+         return {
+-            id: user.id,
+-            pseudo: user.pseudo, 
+-            ...token,
++            access_token: this.jwtService.sign(payload),
+         };
+     }
+-
+-
+-    private _createToken(user: any): any {
+-        const userPayload: JwtPayload = {
+-            id: user.id, 
+-            // activated: user.activated, 
+-            pseudo: user.pseudo, 
+-            email: user.email, 
+-            d_creation: user.d_creation, 
+-            role:
+-            {
+-                name: user.role.name,
+-                description: user.role.description
+-            }
+-        };
+-        const accessToken = this.jwtService.sign(userPayload);
+-        return {
+-            expiresIn: process.env.JWT_TOKEN_EXPIRATION_TIME,
+-            accessToken,
+-        };
+-    }
+-
+-
+-
+-    // async validateUser(payload: JwtPayload): Promise<User> {
+-    //     const user = await this.usersService.findByPayload(payload);    
+-    //     if (!user) {
+-    //         throw new HttpException('Invalid token', HttpStatus.UNAUTHORIZED);    
+-    //     }    
+-    //     return user;  
+-    // }
+ }
+\ No newline at end of file
+diff --git a/src/common/auth/jwt-auth.guards.ts b/src/common/auth/jwt-auth.guards.ts
+index 09e9d95..24d22e7 100644
+--- a/src/common/auth/jwt-auth.guards.ts
++++ b/src/common/auth/jwt-auth.guards.ts
+@@ -15,7 +15,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
+     }
+ 
+     handleRequest(err: any, user: any, info: any, context: ExecutionContext) {
+-        // log.debug("**************************************: handleRequest("+JSON.stringify(user)+")");
++        log.debug("**************************************: handleRequest()");
+         const request = context.switchToHttp().getRequest();
+         request.user = user;
+         return user;
+@@ -33,6 +33,8 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
+         if (isPublic) {
+             return true;
+         }
++
++        log.debug("-----------------------------------")
+         return super.canActivate(context);
+     }
+ 
+diff --git a/src/common/auth/strategies/roles.guards.ts b/src/common/auth/strategies/roles.guards.ts
+index 9412586..e62e313 100644
+--- a/src/common/auth/strategies/roles.guards.ts
++++ b/src/common/auth/strategies/roles.guards.ts
+@@ -1,6 +1,5 @@
+-import { Type, CanActivate, ExecutionContext, mixin, Injectable, Inject, UnauthorizedException } from "@nestjs/common";
++import { Type, CanActivate, ExecutionContext, mixin, Injectable, Inject } from "@nestjs/common";
+ import { Reflector } from "@nestjs/core";
+-import { Error } from "src/common/enums/errors.enum";
+ import { log } from "src/common/log/log";
+ import { JwtAuthGuard } from "../jwt-auth.guards";
+ 
+@@ -13,37 +12,19 @@ export class RolesGuard extends JwtAuthGuard {
+ 
+     async canActivate(context: ExecutionContext) {
+         await super.canActivate(context);
+-        // log.debug(' ============== RolesGuard ============== ')
++        log.debug(' ============== RolesGuard ============== ')
+     
+         const roles = super.getRoles(context);
+         if (!roles) {
+-            log.debug('\x1b[32m + no role restriction for this endpoint \x1b[0m \n')
++            log.debug(' + no role restriction for this endpoint ')
+             return true;
+         }
+ 
+         const { user } = context.switchToHttp().getRequest();
+ 
+-        if(user?.role?.name) {
+-            const authorized = roles.some(role => role === user.role.name);   
+-            if (authorized) {
+-                log.debug(` + role[${user.role.name}] sufficient !\n`);
+-            }  else {
+-                log.debug(` + role[${user.role.name}] not enougth..\n`);
+-            }
+-            return authorized;       
+-        } else {
+-            log.debug(` + role[undefined], token seems outdated..\n`);
+-            throw new UnauthorizedException(Error.JWT_OUT_DATED);
+-        }        
++        log.debug(' + roles allowed for the endpoint: ' + JSON.stringify(roles));
++        log.debug(' + user data from request: ' + JSON.stringify(user));
++
++        return roles.some(role => user?.role === role);
+     }
+ }
+-
+-
+-// @Public()
+-//     @Patch()
+-//     async updateMyself(@Headers('Authorization') auth: string, @IP() Ip, @Body() updateMyselfUserDto: UpdateMyselfUserDto) {
+-        
+-//         const updatedJwtPayload: JwtPayload = JwtUtils.extractToken(auth);
+-//         this.logUpdateMyself( updatedJwtPayload, Ip);
+-//         return this.usersService.updateMyself(updatedJwtPayload.id, updateMyselfUserDto);
+-//     }
+\ No newline at end of file
+diff --git a/src/common/decorators/log.decorator.ts b/src/common/decorators/log.decorator.ts
+deleted file mode 100644
+index 18a1547..0000000
+--- a/src/common/decorators/log.decorator.ts
++++ /dev/null
+@@ -1,20 +0,0 @@
+-import {
+-    createParamDecorator,
+-    ExecutionContext,
+-} from '@nestjs/common';
+-import { Color } from '../enums/colors.enum';
+-import { LogC } from '../utils/logc';
+-
+-/**
+- * Decorator with parameters
+- * ex: default value
+- */
+-export const Log = createParamDecorator(
+-    (defaultValue: string, ctx: ExecutionContext) => {
+-       // const request = ctx.switchToHttp().getRequest();
+-        console.log(`\nMethods ${ defaultValue } called`);
+-
+-        LogC.log(`\nMethods ${ defaultValue } called`, Color.FgGreen);
+-        return '';
+-    },
+-);
+\ No newline at end of file
+diff --git a/src/common/decorators/user.decorator.ts b/src/common/decorators/user.decorator.ts
+deleted file mode 100644
+index 06f4d5a..0000000
+--- a/src/common/decorators/user.decorator.ts
++++ /dev/null
+@@ -1,5 +0,0 @@
+-import { createParamDecorator } from '@nestjs/common';
+-
+-export const AuthUser = createParamDecorator((data, req) => {
+-    return req.auth;
+-});
+\ No newline at end of file
+diff --git a/src/common/enums/colors.enum.ts b/src/common/enums/colors.enum.ts
+deleted file mode 100644
+index 11bdd81..0000000
+--- a/src/common/enums/colors.enum.ts
++++ /dev/null
+@@ -1,28 +0,0 @@
+-export enum Color {
+-    Reset = "\x1b[0m",
+-
+-    FgBlack = "\x1b[30m",
+-    FgRed = "\x1b[31m",
+-    FgGreen = "\x1b[32m",
+-    FgYellow = "\x1b[33m",
+-    FgBlue = "\x1b[34m",
+-    FgMagenta = "\x1b[35m",
+-    FgCyan = "\x1b[36m",
+-    FgWhite = "\x1b[37m",
+-
+-    BgBlack = "\x1b[40m",
+-    BgRed = "\x1b[41m",
+-    BgGreen = "\x1b[42m",
+-    BgYellow = "\x1b[43m",
+-    BgBlue = "\x1b[44m",
+-    BgMagenta = "\x1b[45m",
+-    BgCyan = "\x1b[46m",
+-    BgWhite = "\x1b[47m",
+-
+-    Bright = "\x1b[1m",
+-    Dim = "\x1b[2m",
+-    Underscore = "\x1b[4m",
+-    Blink = "\x1b[5m",
+-    Reverse = "\x1b[7m",
+-    Hidden = "\x1b[8m",
+-}
+\ No newline at end of file
+diff --git a/src/common/enums/errors.enum.ts b/src/common/enums/errors.enum.ts
+deleted file mode 100644
+index 655f20c..0000000
+--- a/src/common/enums/errors.enum.ts
++++ /dev/null
+@@ -1,5 +0,0 @@
+-
+-
+-export enum Error {
+-    JWT_OUT_DATED = "Your token seems outdated..",
+-}
+\ No newline at end of file
+diff --git a/src/common/interceptors/wrap-response.interceptor.ts b/src/common/interceptors/wrap-response.interceptor.ts
+index 757cb18..e6a31d1 100644
+--- a/src/common/interceptors/wrap-response.interceptor.ts
++++ b/src/common/interceptors/wrap-response.interceptor.ts
+@@ -17,15 +17,13 @@ import { log } from '../log/log';
+ export class WrapResponseInterceptor implements NestInterceptor {
+ 
+   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+-    // log.debug('WrapResponseInterceptor before wrapping...');
++    log.debug('WrapResponseInterceptor before wrapping...');
+ 
+     return next.handle().pipe(map(data => (
+       { 
+         application: 'my-sources',
+         language: 'nestjs',
+         version: '1.0',
+-        author: 'astek',
+-        author_email: 'astek_dev@gmail.com',
+         data 
+       })));
+   }
+diff --git a/src/common/middleware/logging.middleware.ts b/src/common/middleware/logging.middleware.ts
+index db28100..68914c2 100644
+--- a/src/common/middleware/logging.middleware.ts
++++ b/src/common/middleware/logging.middleware.ts
+@@ -8,10 +8,10 @@ import {
+ export class LoggingMiddleware implements NestMiddleware {
+ 
+   use(req: any, res: any, next: () => void) {
+-    console.time('### Request-response time ###');
+-    console.log('\n### Request-response time started ###');
++    console.time('LoggingMiddleware Request-response time');
++    console.log('Hi from middleware!');
+     
+-    res.on('finish', () => console.timeEnd('### Request-response time ###'));
++    res.on('finish', () => console.timeEnd('LoggingMiddleware Request-response time'));
+     next(); 
+   }
+ }
+\ No newline at end of file
+diff --git a/src/common/users/dto/user.dto.ts b/src/common/users/dto/user.dto.ts
+deleted file mode 100644
+index 2874c75..0000000
+--- a/src/common/users/dto/user.dto.ts
++++ /dev/null
+@@ -1,24 +0,0 @@
+-import { ApiProperty } from "@nestjs/swagger";
+-import { IsBoolean, IsString, IsEmail, IsDate } from "class-validator";
+-
+-export class UserDto {  
+-    @ApiProperty({ description: 'Is the account activated?' })
+-    @IsBoolean()
+-    activated: boolean;
+-
+-    @ApiProperty({ description: 'The pseudonyme of the user (display in the UI).' })
+-    @IsString()
+-    readonly pseudo: string;
+-
+-    @ApiProperty({ description: 'The email of the user.' })
+-    @IsEmail()
+-    readonly email: string;
+-
+-    @ApiProperty({ description: 'The date of creation of the account.' })
+-    @IsDate()
+-    d_creation: Date;
+-
+-    @ApiProperty({ description: 'The authenticated role of the user.' })
+-    @IsString()
+-    role: string;
+-}
+\ No newline at end of file
+diff --git a/src/common/users/users.controller.ts b/src/common/users/users.controller.ts
+index 9b40357..7cccae8 100644
+--- a/src/common/users/users.controller.ts
++++ b/src/common/users/users.controller.ts
+@@ -1,91 +1,51 @@
+-import { Body, Controller, Request, Headers, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+-import { JwtService } from '@nestjs/jwt';
++import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
+ import { ApiTags } from '@nestjs/swagger';
+-import { JwtPayload } from '../auth/JwtPayload';
+-import { RolesGuard } from '../auth/strategies/roles.guards';
+ import { IP } from '../decorators/ip.decorator';
+-import { Log } from '../decorators/log.decorator';
+ import { Public } from '../decorators/public.decorator';
+-import { Roles } from '../decorators/roles.decorator';
+-import { AuthUser } from '../decorators/user.decorator';
+ import { PaginationQueryDto } from '../dto/pagination-query.dto';
+-import { Color } from '../enums/colors.enum';
+-import { Role } from '../enums/role.enum';
+ import { log } from '../log/log';
+-import { JwtUtils } from '../utils/jwtUtils';
+-import { LogC } from '../utils/logc';
+ import { CreateUserDto } from './dto/create-user.dto';
+ import { UpdateUserDto } from './dto/update-user.dto';
+ import { UsersService } from './users.service';
+ 
+ @ApiTags('users')
+ @Controller('users')
+-@UseGuards(RolesGuard)
+ export class UsersController {
+ 
+     constructor(private readonly usersService: UsersService) { }
+-    //, private readonly jwtUtil: JWTUtil,) { }
+-    // , private readonly jwtService: JwtService) {}
+ 
+     @Get(':id')
+-    find(@Headers('Authorization') auth: string, @Param('id', ParseIntPipe) id: number) {
+-        this.logReqBy(auth);
+-
++    find(@Param('id', ParseIntPipe) id: number) {
+         return this.usersService.findOne(id);
+     }
+ 
+     @Get()
+-    findAll(@Headers('Authorization') auth: string, @Query() paginationQuery: PaginationQueryDto) {
+-        this.logReqBy(auth);
+-
++    findAll(@Query() paginationQuery: PaginationQueryDto) {
+         return this.usersService.findAll(paginationQuery);
+     }
+ 
+     @Post()
+-    create( @Body() createUserDto: CreateUserDto) {
+-        // this.logReqBy(auth);
+-
++    create(@Body() createUserDto: CreateUserDto) {
+         createUserDto.d_creation = new Date();
+         return this.usersService.create(createUserDto);
+     }
+ 
+-    @Public()
+-    @Patch()
+-    async updateMyself(@Headers('Authorization') auth: string, @IP() Ip, @Body() updateUserDto: UpdateUserDto) {
+-        
+-        const updatedJwtPayload: JwtPayload = JwtUtils.extractToken(auth);
+-        this.logUpdateMyself( updatedJwtPayload.id, Ip, updateUserDto, );
+-        this.logReqBy(auth);
+-
+-        return this.usersService.updateMyself(updatedJwtPayload.id, updateUserDto);
+-    }
+-
+-    @Roles(Role.Admin, Role.Astek)
+     @Patch(':id')
+-    update(@Headers('Authorization') auth: string, @Log('UsersController.update()') l, @Param('id', ParseIntPipe) id: number, @IP() Ip, @Body() updateUserDto: UpdateUserDto) {
++    update(@Param('id', ParseIntPipe) id: number, @IP() Ip, @Body() updateUserDto: UpdateUserDto) {
+         this.logUpdate(id, Ip, updateUserDto);
+-        this.logReqBy(auth);
+-
+         return this.usersService.update(id, updateUserDto);
+     }
+ 
+-    // @Roles(Role.Admin, Role.Astek)
+-
+-
+     @Delete(':id')
+-    delete( @Headers('Authorization') auth: string, @Param('id', ParseIntPipe) id: number, @IP() Ip) {
+-        this.logDelete(id, Ip);
+-        this.logReqBy(auth);
+-
++    delete(@Param('id', ParseIntPipe) id: number, @IP() Ip) {
++        this.logDelete(id, Ip, false);
+         const deletedUSer = this.usersService.deleteUser(id);
+         return deletedUSer;
+     }
+ 
+     @Delete()
+-    deleteAll(@IP() Ip, @Headers('Authorization') auth: string) {
+-        this.logDelete(-1, Ip);
+-        this.logReqBy(auth);
+-        
++    deleteAll( @IP() Ip) {
++        this.logDelete(-1, Ip, true);
+         return this.usersService.deleteAllUsers();
+     }
+ 
+@@ -93,31 +53,18 @@ export class UsersController {
+     /**
+      * LOGS
+      */
+-    logReqBy(auth: string){
+-        const updatedJwtPayload: JwtPayload = JwtUtils.extractToken(auth);
+-        LogC.log(` + requested by user #${updatedJwtPayload.id} ${updatedJwtPayload.pseudo} ${updatedJwtPayload.email}, cration: ${updatedJwtPayload.d_creation} [${updatedJwtPayload.role.name}]`, Color.BgRed );   
+-        log.debug(` `);
+-    }
+-    
+-    logUpdateMyself(id: number, ip: string, updateUserDto: UpdateUserDto) {
+-        log.debug(` --------- USER UPDATE HIMSELF ---------`);
+-        this.logGeneric(id, ip, updateUserDto);       
+-    }
+-
+     logUpdate(id: number, ip: string, updateUserDto: UpdateUserDto) {
+-        log.debug(` --------- UPDATE USER ---------`);
+-        this.logGeneric(id, ip, updateUserDto);
+-    }
+-
+-    logGeneric(id: number, ip: string, updateUserDto: UpdateUserDto){
+-        log.debug(` - Update user #${id} requested from ${ip}`);
+-        log.debug(` - updateUserDto: ${JSON.stringify(updateUserDto)}`);
++        log.debug(`--------- UPDATE USER ---------`);
++        log.debug(`Update user #${id} requested from ${ip}`);
++        log.debug(`${JSON.stringify(updateUserDto)}`);
++        log.debug(` `);
+     }
+ 
+-    logDelete(id: number, ip: string) {
+-        LogC.log(` --------- DELETE USER ---------`, Color.FgRed);
+-        (id === -1)
+-            ? LogC.log(` - Delete all user requested from ${ip}`, Color.FgRed)
+-            : LogC.log(` - Delete user #${id} requested from ${ip}`, Color.FgRed);
++    logDelete(id: number, ip: string, all: boolean) {
++        log.debug(`--------- DELETE USER ---------`);
++        ( all === true) 
++            ? log.debug(`Delete all user requested from ${ip}`)
++            : log.debug(`Delete user #${id} requested from ${ip}`);
++        log.debug(` `);
+     }
+ }
+diff --git a/src/common/users/users.module.ts b/src/common/users/users.module.ts
+index 8d47022..289a4d5 100644
+--- a/src/common/users/users.module.ts
++++ b/src/common/users/users.module.ts
+@@ -1,8 +1,7 @@
+-import { forwardRef, Module } from '@nestjs/common';
++import { Module } from '@nestjs/common';
+ import { ConfigModule } from '@nestjs/config';
+ import { TypeOrmModule } from '@nestjs/typeorm';
+ import { UsersController } from 'src/common/users/users.controller';
+-import { AuthModule } from '../auth/auth.module';
+ import usersConfig from './config/users.config';
+ import { Role } from './entities/role.entity';
+ import { User } from './entities/user.entity';
+@@ -11,8 +10,7 @@ import { UsersService } from './users.service';
+ @Module({
+   imports: [
+     TypeOrmModule.forFeature([User, Role]), 
+-    ConfigModule.forFeature(usersConfig),
+-    forwardRef(() => AuthModule),
++    ConfigModule.forFeature(usersConfig)
+   ],
+   controllers: [UsersController], 
+   providers: [UsersService],
+diff --git a/src/common/users/users.service.ts b/src/common/users/users.service.ts
+index a3f3949..f8c575e 100644
+--- a/src/common/users/users.service.ts
++++ b/src/common/users/users.service.ts
+@@ -1,11 +1,8 @@
+-import { BadRequestException, forwardRef, Inject, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
++import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+ import { ConfigService, ConfigType } from '@nestjs/config';
+-import { JwtService } from '@nestjs/jwt';
+ import { InjectRepository } from '@nestjs/typeorm';
+ import coffeesConfig from 'src/coffees/config/coffees.config';
+ import { Repository, Connection, getConnection } from 'typeorm';
+-import { AuthService } from '../auth/auth.service';
+-import { JwtPayload } from '../auth/JwtPayload';
+ import { PaginationQueryDto } from '../dto/pagination-query.dto';
+ import usersConfig from './config/users.config';
+ import { CreateRoleDto } from './dto/create-role.dto';
+@@ -19,8 +16,7 @@ import { User } from './entities/user.entity';
+ 
+ @Injectable()
+ export class UsersService {
+-
+-
++    
+ 
+     constructor(
+         @InjectRepository(User)
+@@ -32,13 +28,6 @@ export class UsersService {
+         @Inject(usersConfig.KEY)
+         private conf: ConfigType<typeof usersConfig>,
+ 
+-        // @Inject(forwardRef(() => AuthService)) //<--- 
+-        // private readonly authService: AuthService,
+-
+-        // private readonly jwtService: JwtService,
+-
+-        // private readonly jwtService: JwtService,
+-
+     ) { }
+ 
+     /** ########################## USER ##########################  */
+@@ -63,7 +52,7 @@ export class UsersService {
+     }
+ 
+     async findByUsername(username: string): Promise<User | undefined> {
+-        const existingUser = await this.usersRepository.findOne({
++        const existingUser = this.usersRepository.findOne({
+             where: { username: username },
+             relations: [this.conf.role],
+         });
+@@ -72,23 +61,6 @@ export class UsersService {
+         else { throw new NotFoundException(existingUser, `User '${username}' not found`); }
+     }
+ 
+-    async findByPayload({ username }: any): Promise<User> {
+-        const existingUser = await this.usersRepository.findOne({
+-            where: { username },
+-            relations: [this.conf.role],
+-        });
+-
+-        if (existingUser) { return existingUser; }
+-        else { throw new NotFoundException(existingUser, `User '${username}' not found (from payload)`); }
+-    }
+-
+-    // async cdecodeTokenId(token: string) : number {
+-    //     const decoded = await this.decodeToken(token);
+-
+-    //     if (decoded.) { return +decoded.id; }
+-    //     else { throw new InternalServerErrorException(decoded, `Can't decode the id`); }
+-    // }
+-
+     /** */
+     async create(createUserDto: CreateUserDto) {
+         const role = await Promise.resolve(this.preloadRoleByName(createUserDto.role));
+@@ -96,7 +68,12 @@ export class UsersService {
+         console.log(`createUserDto: ${JSON.stringify(createUserDto)}`);
+ 
+         // Hash password
+-        const hashed = await this.ashPassword(createUserDto.password);
++        const bcrypt = require('bcrypt');
++        const salt = await bcrypt.genSalt(6);
++        const hashed = await bcrypt.hash(createUserDto.password, salt);
++        console.log(`bcrypt - ${hashed}`);
++
++        
+ 
+         const user = this.usersRepository.create({
+             ...createUserDto,
+@@ -126,20 +103,6 @@ export class UsersService {
+         return this.usersRepository.save(user);
+     }
+ 
+-    async updateMyself(id: number, updateUserDto: UpdateUserDto) {
+-
+-        let req = await this.constructReqUpdateMyself(id, updateUserDto);
+-
+-        console.log(`updateMyself : ${JSON.stringify(req)}` );
+-
+-        const user = await this.usersRepository.preload(req);
+-        if (!user) {
+-            throw new NotFoundException(`User #${id} not found`);
+-        }
+-        return this.usersRepository.save(user);
+-    }
+-
+-
+     async deleteUser(id: number) {
+         const user = await this.usersRepository.findOne({ id: id });
+         return await this.usersRepository.remove(user);
+@@ -187,56 +150,4 @@ export class UsersService {
+ 
+         throw new NotFoundException(existingRole, `Role '${name}' not found`);
+     }
+-
+-    
+-    async ashPassword(password: string) {
+-        // Hash password
+-        const bcrypt = require('bcrypt');
+-        const salt = await bcrypt.genSalt(6);
+-        const hashed = await bcrypt.hash(password, salt);
+-        console.log(`bcrypt - ${hashed}`);
+-        return hashed;
+-    }
+-
+-    /**
+-     * 
+-     * @param id Can update only pseudo and password
+-     * @param updateUserDto 
+-     * @returns 
+-     */
+-    async constructReqUpdateMyself(id: number, updateUserDto: UpdateUserDto) {
+-        
+-        const hasPseudo : boolean = updateUserDto.pseudo != '';
+-        const hasPwd : boolean = updateUserDto.password != '';
+-
+-        let req;
+-        if (hasPseudo && hasPwd) {
+-            const hashed = await this.ashPassword(updateUserDto.password);
+-            console.log(`${ hashed}`);
+-            req = {
+-                id: id,
+-                pseudo: updateUserDto.pseudo,
+-                password: hashed,
+-            };
+-    
+-        } else if (hasPseudo) {
+-            req = {
+-                id: id,
+-                pseudo: updateUserDto.pseudo,
+-            };
+-    
+-        }else if (hasPwd) {
+-            const hashed = await this.ashPassword(updateUserDto.password);
+-            console.log(`${ hashed}`);
+-            req = {
+-                id: id,
+-                password: hashed,
+-            };
+-        } else {
+-            throw new BadRequestException(`Need at least a pseudo or a password`);
+-        }
+-        
+-        return req;
+-    }
+-}
+-
++}
+\ No newline at end of file
+diff --git a/src/common/utils/jwtUtils.ts b/src/common/utils/jwtUtils.ts
+deleted file mode 100644
+index 84e9cf0..0000000
+--- a/src/common/utils/jwtUtils.ts
++++ /dev/null
+@@ -1,17 +0,0 @@
+-import { UnauthorizedException } from "@nestjs/common";
+-import { JwtPayload } from "../auth/JwtPayload";
+-import { Error } from "../enums/errors.enum";
+-
+-export class JwtUtils {
+-
+-    static extractToken(auth: string) {
+-        if (auth) {
+-            const base64Payload = auth.split('.')[1];
+-            const payloadBuffer = Buffer.from(base64Payload, 'base64');
+-            const updatedJwtPayload: JwtPayload = JSON.parse(payloadBuffer.toString()) as JwtPayload;
+-            return updatedJwtPayload;
+-        } else {
+-            throw new UnauthorizedException(Error.JWT_OUT_DATED);
+-        }
+-    }
+-}
+\ No newline at end of file
+diff --git a/src/common/utils/logc.ts b/src/common/utils/logc.ts
+deleted file mode 100644
+index 0e30ead..0000000
+--- a/src/common/utils/logc.ts
++++ /dev/null
+@@ -1,9 +0,0 @@
+-import { Color } from "../enums/colors.enum";
+-
+-
+-export class LogC {
+-
+-    static log(msg: string, color: Color){
+-        console.log(color + msg + Color.Reset);
+-    }
+-}
+\ No newline at end of file
