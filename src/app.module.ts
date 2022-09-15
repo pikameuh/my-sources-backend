@@ -3,8 +3,8 @@ import { Module, ValidationPipe } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { CoffeesModule } from './coffees/coffees.module';
-import { CoffeeRatingModule } from './coffee-rating/coffee-rating.module';
+// import { CoffeesModule } from './coffees/coffees.module';
+// import { CoffeeRatingModule } from './coffee-rating/coffee-rating.module';
 import { DatabaseModule } from './database/database.module';
 import { ConfigModule } from '@nestjs/config';
 import * as Joi from '@hapi/joi';
@@ -38,7 +38,7 @@ import { RolesController } from './common/users/roles.controller';
       //Throw an excpetion if database host is missing from config
       validationSchema: Joi.object({
         DATABASE_HOST: Joi.required(),
-        DATABASE_PORT: Joi.number().default(5433),
+        DATABASE_PORT: Joi.number().default(5432),
       }),
 
       load: [appConfig],
@@ -57,7 +57,7 @@ import { RolesController } from './common/users/roles.controller';
         synchronize: true, // your entities will be synced with the database (recommended: disable in prod)
       })
     }),
-    CoffeeRatingModule,
+    // CoffeeRatingModule,
     DatabaseModule,
     SourcesModule,
   ],
